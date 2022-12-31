@@ -83,35 +83,52 @@ fn attack_until_dead(player: Player, mut boss: Boss, rng_gen: &mut PCG32) -> u16
     ticks
 }
 
-fn spec_bgs(player: Player, boss: &mut Boss, bgs_specs: u16, rng_gen: &mut PCG32) {
+fn spec_bgs(player: Player, boss: &mut Boss, bgs_specs: u16, rng_gen: &mut PCG32) -> u16 {
+    let mut specs = 0;
     for _ in 0..bgs_specs {
         let mar = RandRangeU32::new(0, player.mar).sample(rng_gen);
         let mdr = RandRangeU32::new(0, boss.mdr).sample(rng_gen);
         if mar > mdr {
             let damage = RandRangeU32::new(0, player.max_hit as u32).sample(rng_gen) as u16;
             boss.reduce_def(damage);
+            specs += damage;
         }
     }
+    specs
 }
 
 fn simulate_n(trials: usize, bgs: u16, rng_gen: &mut PCG32) {
     let mut times = Vec::with_capacity(trials);
+    let mut misses = Vec::new();
 
-    let bgs_spec = Player::new(36814 * 2, 77, 6); //torva, fero, torture
-    let tbow = Player::new(53032, 80, 5); //masori, vambs, ame, no helm/boots
+    //let bgs_spec = Player::new(36814 * 2, 77, 6); //torva, fero, torture
+    let bgs_spec = Player::new(36814 * 2, 75, 6); //bandos, fero, torture
+    //let tbow = Player::new(53032, 80, 5); //masori, vambs, ame, no helm/boots
+    let tbow = Player::new(49136, 76, 5); //arma, vambs, ame, prims, neit
     let boss_slash = Boss::new(571, 180, 40, 120);
 
     for _ in 0..trials {
         let mut temp_boss = boss_slash.clone();
-        spec_bgs(bgs_spec, &mut temp_boss, bgs, rng_gen);
+        let drain = spec_bgs(bgs_spec, &mut temp_boss, bgs, rng_gen);
         let boss_range = Boss::new(temp_boss.hp, temp_boss.def_lvl, 20, 120);
         let ttk = attack_until_dead(tbow.clone(), boss_range, rng_gen);
         times.push(ttk + 6 * bgs);
+        if drain == 0 {
+            misses.push(ttk + 6 * bgs);
+        }
     }
     let sum = times.iter().fold(0u64, |sum, i| sum + (*i as u64));
     let avg_ticks = sum as f64 / trials as f64;
 
-    println!("TTK with {} BGS specs: {:.2}", bgs, avg_ticks * 0.6);
+    let missed_sum = misses.iter().fold(0u64, |sum, i| sum + (*i as u64));
+    let missed_avg_ticks = missed_sum as f64 / misses.len() as f64;
+
+    let threshold = avg_ticks * 1.31;
+    let slows = times.iter().filter(|trial| **trial >= threshold as u16).count();
+
+    println!("TTK with {} BGS specs: {:.4}", bgs, avg_ticks * 0.6);
+    println!("  miss %: {}, TTK: {}", misses.len() * 100 / trials, missed_avg_ticks * 0.6);
+    println!("  % slower than {:.4}: {}", threshold * 0.6, slows * 100 / trials);
 }
 
 fn main() {
@@ -122,9 +139,9 @@ fn main() {
     let seed = u64::from_ne_bytes(buf);
     let mut rng_gen = randomize::PCG32::seed(seed, seed);
 
-    simulate_n(1_000_000, 0, &mut rng_gen);
-    simulate_n(1_000_000, 1, &mut rng_gen);
-    simulate_n(1_000_000, 2, &mut rng_gen);
+    simulate_n(10_000_000, 0, &mut rng_gen);
+    simulate_n(10_000_000, 1, &mut rng_gen);
+    simulate_n(10_000_000, 2, &mut rng_gen);
 }
 
 #[cfg(test)]
